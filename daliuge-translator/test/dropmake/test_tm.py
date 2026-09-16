@@ -303,7 +303,10 @@ class TestTm(unittest.TestCase):
             "/pg_viewer?pgt_view_name=unknown.json",
         )
         # Defaults to first PGT
-        c._GET("/pg_viewer")
+        response = c._GET("/pg_viewer")
+        page = response.read()
+        self.assertIn('id="partitionButton"', page)
+        self.assertIn("graphInit('partition')", page)
         # also fine, PGT exists
         # c._GET("/pg_viewer?pgt_view_name=logical_graphs/chiles_simple2_pgt.graph")
 

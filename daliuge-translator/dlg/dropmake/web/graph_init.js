@@ -49,18 +49,21 @@ function graphInit(graphType) {
                 echartsGraphInit("sankey", data)
             } else if (graphType === "dag") {
                 dagGraphInit(data)
+            } else if (graphType === "partition") {
+                partitionGraphInit(data)
             }
 
             //set correct graph button to active
             $(".graphChanger").removeClass("active")
             $("#" + graphType + "Button").addClass("active")
 
-            //hide graph change buttons when they dont make sense locks the graph to sankey if node count is over 300
+            // DAG is unsuitable for very large graphs, but aggregate views remain useful.
             if (nodeCount > 600) {
-                $("#view-mode-buttons").hide();
+                $("#dagButton").hide();
             } else {
-                $("#view-mode-buttons").show();
+                $("#dagButton").show();
             }
+            $("#view-mode-buttons").show();
 
             // display any errors that were generated during translation
             if (error !== "None") {
@@ -69,6 +72,22 @@ function graphInit(graphType) {
         }
     })
 };
+
+function partitionGraphInit(data) {
+    $("#main").append("<div id='partitionGraphArea'></div>")
+
+    var container = document.getElementById("partitionGraphArea");
+    if (typeof renderPartitionGraph === "function") {
+        renderPartitionGraph(data, container);
+    } else {
+        container.innerHTML = [
+            "<div class='partition-placeholder' role='status'>",
+            "<strong>Partition Graph renderer not available</strong>",
+            "<span>The Partition view is ready. Its visualisation will appear here when the renderer is connected.</span>",
+            "</div>"
+        ].join("");
+    }
+}
 
 // dag graph setup
 
