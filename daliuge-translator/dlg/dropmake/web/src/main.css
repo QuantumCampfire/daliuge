@@ -538,6 +538,33 @@
   height:100%;
 }
 
+#partitionGraphArea{
+  align-items:center;
+  display:flex;
+  width:100%;
+  height:100%;
+  justify-content:center;
+}
+
+.partition-placeholder{
+  border:1px dashed #9aaec3;
+  border-radius:8px;
+  color:#516579;
+  max-width:440px;
+  padding:24px 32px;
+  text-align:center;
+}
+
+.partition-placeholder strong,
+.partition-placeholder span{
+  display:block;
+}
+
+.partition-placeholder strong{
+  color:#263d58;
+  margin-bottom:8px;
+}
+
 .dropdown-menu{
   border:solid 1px #000c1a;
   border-radius: 6px;
