@@ -168,7 +168,8 @@ function renderPartitionGraph(data, container) {
     });
 
     // --- Add edges -------------------------------------------------------
-    // No arrowheads: partition edges are undirected.
+    // No arrowheads: partition edges are undirected. The "none" arrowhead is
+    // registered in getRender() as a no-op.
     partitionGraph.linkDataArray.forEach(function (link) {
         const ratio = maxWeight > 1 ? (link.weight / maxWeight) : 1;
         const strokeWidth = MIN_STROKE + ratio * (MAX_STROKE - MIN_STROKE);
@@ -265,6 +266,12 @@ function dagGraphInit(data) {
 function getRender() {
 
     var render = new dagreD3.render();
+
+    // Register a no-op arrowhead so we can pass arrowhead: "none"
+    // on edges that should be drawn as plain undirected lines.
+    render.arrows().none = function (parent, id, edge, type) {
+        // Intentionally empty — no marker is drawn.
+    };
 
     // Add our custom shape (parallelogram, similar to the PIP PDR document)
     render.shapes().parallelogram = function (parent, bbox, node) {
