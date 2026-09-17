@@ -1,3 +1,8 @@
+//require takes over the whole page, thus we need to load main.js with require as well
+require([
+    "/static/main.js",
+]);
+
 function showMessageModal(title, content) {
     $("#messageModalTitle").html(title);
     $("#messageModalContent").html(content);
@@ -37,20 +42,27 @@ function graphInit(graphType) {
                 }
             }
 
-            //reset graph divs
-            $("#main").empty()
-            //initiate the correct function
-            if (graphType === "sankey") {
-                echartsGraphInit("sankey", data)
-            } else if (graphType === "dag") {
-                dagGraphInit(data)
-            } else if (graphType === "partition") {
-                partitionGraphInit(data)
-            }
-
-            //set correct graph button to active
+            // Reset button state FIRST, before any render call can throw.
             $(".graphChanger").removeClass("active")
             $("#" + graphType + "Button").addClass("active")
+
+            //reset graph divs
+            $("#main").empty()
+
+            //initiate the correct function. Wrap in try/catch so a renderer
+            //failure doesn't leave the UI in a half-updated state.
+            try {
+                if (graphType === "sankey") {
+                    echartsGraphInit("sankey", data)
+                } else if (graphType === "dag") {
+                    dagGraphInit(data)
+                } else if (graphType === "partition") {
+                    partitionGraphInit(data)
+                }
+            } catch (err) {
+                console.error("graph render failed:", err);
+                showMessageModal("Error", "Graph rendering failed: " + err.message);
+            }
 
             // DAG is unsuitable for very large graphs, but aggregate views remain useful.
             if (nodeCount > 600) {
