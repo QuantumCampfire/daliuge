@@ -1,104 +1,97 @@
-/* Partition graph renderer.
- *
- * The input remains the physical graph template.  Aggregation is deliberately
- * kept in partition_data.js so this module only owns layout and drawing.
- */
-function renderPartitionGraph(data, container) {
-    var partitionData = createPartitionGraphData(data);
-    var width = Math.max(container.clientWidth || 0, 1);
-    var height = Math.max(container.clientHeight || 0, 1);
+function createPartitionGraphData(data) {
+    const partitionGraph = {
+        nodeDataArray: [],
+        linkDataArray: []
+    };
 
-    container.innerHTML = "";
+    // Metadata for the group/partition objects already produced by the translator.
+    const groupInfo = new Map();
 
-    var svg = d3.select(container)
-        .append("svg")
-        .attr("id", "partitionGraph")
-        .attr("role", "img")
-        .attr("aria-label", "Partition graph")
-        .attr("width", width)
-        .attr("height", height)
-        .style("width", "100%")
-        .style("height", "100%");
+    // PG node key -> partition key.
+    const nodeToPartition = new Map();
 
-    var root = svg.append("g").attr("id", "partitionGraphRoot");
-    var graph = new dagreD3.graphlib.Graph()
-        .setGraph({
-            rankdir: "LR",
-            nodesep: 70,
-            ranksep: 100,
-            marginx: 40,
-            marginy: 40
-        })
-        .setDefaultEdgeLabel(function () { return {}; });
+    // Partition key -> number of PG nodes inside it.
+    const partitionNodeCounts = new Map();
 
-    partitionData.nodeDataArray.forEach(function (partition) {
-        var nodeCount = Number(partition.nodeCount) || 0;
-        graph.setNode(partition.key, {
-            labelType: "html",
-            label: [
-                "<div class=\"partition-node\">",
-                "<strong>", escapePartitionLabel(partition.name), "</strong>",
-                "<span>", nodeCount, " PG nodes</span>",
-                "</div>"
-            ].join(""),
-            class: "partition-node-container",
-            rx: 6,
-            ry: 6,
-            padding: 0
-        });
+    // "fromPartition->toPartition" -> partition edge.
+    const partitionEdges = new Map();
+
+    // Store information about existing partition/group objects.
+    data.nodeDataArray.forEach(function (node) {
+        if (node.isGroup === true) {
+            groupInfo.set(node.key, node);
+        }
     });
 
-    partitionData.linkDataArray.forEach(function (link) {
-        var weight = Math.max(1, Number(link.weight) || 1);
-        graph.setEdge(link.from, link.to, {
-            label: String(link.weight),
-            width: weight,
-            lineInterpolate: "basis",
-            arrowhead: "vee"
-        });
-    });
-
-    root.call(new dagreD3.render(), graph);
-
-    var zoom = d3.zoom().on("zoom", function () {
-        root.attr("transform", d3.event.transform);
-    });
-    svg.call(zoom);
-
-    function fitGraph() {
-        var graphRoot = root.node();
-        if (!graphRoot || !graphRoot.getBBox) {
+    // Determine which partition each physical node belongs to.
+    data.nodeDataArray.forEach(function (node) {
+        if (node.isGroup === true) {
             return;
         }
 
-        var bounds = graphRoot.getBBox();
-        var availableWidth = container.clientWidth;
-        var availableHeight = container.clientHeight;
-        if (!bounds.width || !bounds.height || !availableWidth || !availableHeight) {
+        if (node.group === undefined) {
             return;
         }
 
-        var scale = Math.min(
-            (availableWidth - 40) / bounds.width,
-            (availableHeight - 40) / bounds.height,
-            1
+        nodeToPartition.set(node.key, node.group);
+
+        if (!partitionNodeCounts.has(node.group)) {
+            partitionNodeCounts.set(node.group, 0);
+        }
+
+        partitionNodeCounts.set(
+            node.group,
+            partitionNodeCounts.get(node.group) + 1
         );
-        var x = (availableWidth - bounds.width * scale) / 2 - bounds.x * scale;
-        var y = (availableHeight - bounds.height * scale) / 2 - bounds.y * scale;
-        svg.call(zoom.transform, d3.zoomIdentity.translate(x, y).scale(scale));
-    }
+    });
 
-    fitGraph();
+    // Create one Partition Graph node for every partition that actually contains PG nodes.
+    partitionNodeCounts.forEach(function (nodeCount, partitionKey) {
+        const group = groupInfo.get(partitionKey);
 
-    // The viewer can be resized without recreating the graph.
-    window.addEventListener("resize", fitGraph);
-}
+        partitionGraph.nodeDataArray.push({
+            key: partitionKey,
+            name: group ? group.name : "Partition_" + partitionKey,
+            nodeCount: nodeCount
+        });
+    });
 
-function escapePartitionLabel(value) {
-    return String(value === undefined ? "" : value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+    // Examine every PG connection.
+    data.linkDataArray.forEach(function (link) {
+        const fromPartition = nodeToPartition.get(link.from);
+        const toPartition = nodeToPartition.get(link.to);
+
+        if (
+            fromPartition === undefined ||
+            toPartition === undefined
+        ) {
+            return;
+        }
+
+        // Ignore connections within the same partition.
+        if (fromPartition === toPartition) {
+            return;
+        }
+
+        // Normalise the pair so P1->P2 and P2->P1 become the same undirected partition edge.
+        const firstPartition = Math.min(fromPartition, toPartition);
+        const secondPartition = Math.max(fromPartition, toPartition);
+
+        const edgeKey = firstPartition + "-" + secondPartition;
+
+        if (!partitionEdges.has(edgeKey)) {
+            partitionEdges.set(edgeKey, {
+                from: firstPartition,
+                to: secondPartition,
+                weight: 1
+            });
+        } else {
+            partitionEdges.get(edgeKey).weight += 1;
+        }
+    });
+
+    partitionGraph.linkDataArray =
+        Array.from(partitionEdges.values());
+
+    return partitionGraph;
 }
