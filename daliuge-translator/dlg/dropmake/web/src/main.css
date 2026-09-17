@@ -543,16 +543,19 @@
    --------------------------------------------------------------------------- */
 
 #partitionGraphArea{
-  align-items:center;
-  display:flex;
   width:100%;
   height:100%;
-  justify-content:center;
+  position: relative;
 }
 
 #partitionGraphAreaInner{
   width: 100%;
   height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 #partitionD3Graph{
@@ -561,30 +564,44 @@
   display: block;
 }
 
-.partition-node rect {
+/* Node boxes — same selectors the DAG view uses so dagre-d3's default
+   black fill is overridden */
+#partitionGraphArea .node rect {
   fill: #eef4fb;
   stroke: #4a6fa5;
   stroke-width: 2px;
 }
 
-.partition-node-label {
+#partitionGraphArea .node {
+  cursor: pointer;
+}
+
+/* Labels */
+#partitionGraphArea .node .partition-node-label {
   display: flex;
   flex-direction: column;
   align-items: center;
   font-family: sans-serif;
   line-height: 1.25;
+  padding: 4px 10px;
 }
 
-.partition-node-name {
+#partitionGraphArea .node .partition-node-name {
   font-size: 13px;
   font-weight: 600;
   color: #1f3a5f;
   white-space: nowrap;
 }
 
-.partition-node-count {
+#partitionGraphArea .node .partition-node-count {
   font-size: 11px;
   color: #5a6b80;
+}
+
+/* Edge styling — the inline `style` attribute on each <path> overrides these
+   for stroke/stroke-width, but these are good defaults */
+#partitionGraphArea path.path {
+  fill: none;
 }
 
 .partition-placeholder{
@@ -594,6 +611,7 @@
   max-width:440px;
   padding:24px 32px;
   text-align:center;
+  margin: auto;
 }
 
 .partition-placeholder strong,
