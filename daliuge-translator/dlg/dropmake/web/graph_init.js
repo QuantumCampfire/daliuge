@@ -1,8 +1,3 @@
-//require takes over the whole page, thus we need to load main.js with require as well
-require([
-    "/static/main.js",
-]);
-
 function showMessageModal(title, content) {
     $("#messageModalTitle").html(title);
     $("#messageModalContent").html(content);
@@ -73,6 +68,24 @@ function graphInit(graphType) {
     })
 };
 
+// partition graph setup
+
+function partitionGraphInit(data) {
+    $("#main").append("<div id='partitionGraphArea'></div>")
+
+    var container = document.getElementById("partitionGraphArea");
+    if (typeof createPartitionGraphData === "function") {
+        renderPartitionGraph(data, container);
+    } else {
+        container.innerHTML = [
+            "<div class='partition-placeholder' role='status'>",
+            "<strong>Partition Graph renderer not available</strong>",
+            "<span>partition_data.js must be loaded before graph_init.js.</span>",
+            "</div>"
+        ].join("");
+    }
+}
+
 function renderPartitionGraph(data, container) {
     const partitionGraph = createPartitionGraphData(data);
 
@@ -101,6 +114,7 @@ function renderPartitionGraph(data, container) {
     });
     svg.call(zoom);
 
+    // Same graphlib config as dagGraphInit
     var g = new dagreD3.graphlib.Graph({ compound: false })
         .setGraph({
             nodesep: 70,
@@ -142,8 +156,7 @@ function renderPartitionGraph(data, container) {
     });
 
     // --- Add edges -------------------------------------------------------
-    // No `arrowhead` here — we draw our own marker after render so we can
-    // control its size and anchoring precisely.
+    // No arrowheads: partition edges are undirected.
     partitionGraph.linkDataArray.forEach(function (link) {
         const ratio = maxWeight > 1 ? (link.weight / maxWeight) : 1;
         const strokeWidth = MIN_STROKE + ratio * (MAX_STROKE - MIN_STROKE);
@@ -160,16 +173,13 @@ function renderPartitionGraph(data, container) {
         });
     });
 
-    // --- Render ----------------------------------------------------------
+    // --- Render using the same renderer the DAG view uses ----------------
     var render = getRender();
     inner.call(render, g);
 
-    // --- Replace dagre-d3's arrowheads with our own ----------------------
-    installPartitionArrowheads(svg, inner);
-
-    // --- Fit -------------------------------------------------------------
     fitPartitionGraph(svg, inner);
 
+    // Resize handler — removes itself when the view changes
     const resizeHandler = function () {
         if (!document.getElementById("partitionD3Graph")) {
             window.removeEventListener("resize", resizeHandler);
@@ -180,42 +190,26 @@ function renderPartitionGraph(data, container) {
     window.addEventListener("resize", resizeHandler);
 }
 
-/**
- * Draws a single small arrow marker into the SVG <defs> and points every
- * partition edge's marker-end at it. Unlike dagre-d3's default marker, this
- * one uses markerUnits="userSpaceOnUse" so its size does NOT scale with the
- * edge's stroke-width, and refX is chosen so the tip lands exactly on the
- * edge endpoint.
- */
-function installPartitionArrowheads(svg, inner) {
-    const ARROW_ID = "partition-arrow";
-    const ARROW_SIZE = 6;      // px — tip-to-base length
-    const ARROW_WIDTH = 4;     // px — half-height of the head
+function fitPartitionGraph(svg, inner) {
+    const svgNode = svg.node();
+    const innerNode = inner.node();
+    if (!svgNode || !innerNode) return;
 
-    // Remove any marker previously added (in case of re-render)
-    svg.selectAll("#" + ARROW_ID).remove();
+    const bounds = innerNode.getBBox();
+    if (bounds.width === 0 || bounds.height === 0) return;
 
-    const defs = svg.select("defs").empty()
-        ? svg.append("defs")
-        : svg.select("defs");
+    const fullWidth = svgNode.clientWidth;
+    const fullHeight = svgNode.clientHeight;
 
-    defs.append("marker")
-        .attr("id", ARROW_ID)
-        .attr("viewBox", "0 0 " + ARROW_SIZE + " " + (ARROW_WIDTH * 2))
-        .attr("refX", ARROW_SIZE)          // tip at the edge endpoint
-        .attr("refY", ARROW_WIDTH)         // vertical centre of the marker
-        .attr("markerWidth", ARROW_SIZE)
-        .attr("markerHeight", ARROW_WIDTH * 2)
-        .attr("markerUnits", "userSpaceOnUse")   // do NOT scale with stroke-width
-        .attr("orient", "auto")
-        .append("path")
-        .attr("d", "M 0 0 L " + ARROW_SIZE + " " + ARROW_WIDTH +
-                  " L 0 " + (ARROW_WIDTH * 2) + " Z")
-        .attr("fill", "context-stroke");   // inherit the edge's stroke colour
+    const widthScale = (fullWidth - 60) / bounds.width;
+    const heightScale = (fullHeight - 60) / bounds.height;
+    const scale = Math.min(widthScale, heightScale, 1);
 
-    // Point every edge at our marker
-    inner.selectAll("path.path")
-        .attr("marker-end", "url(#" + ARROW_ID + ")");
+    const translateX = (fullWidth - bounds.width * scale) / 2 - bounds.x * scale;
+    const translateY = (fullHeight - bounds.height * scale) / 2 - bounds.y * scale;
+
+    inner.attr("transform",
+        "translate(" + translateX + "," + translateY + ") scale(" + scale + ")");
 }
 
 // dag graph setup
