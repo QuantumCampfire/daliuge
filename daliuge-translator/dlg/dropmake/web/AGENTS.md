@@ -25,7 +25,6 @@ These instructions apply to the Translator web interface in this directory.
 - The Partition renderer contract is `renderPartitionGraph(data, container)`.
 - Guard calls to the renderer until it is available.
 - When the renderer is unavailable, show a short placeholder message inside the container instead of leaving a blank view or raising an error.
-- Task 3 must implement the renderer in a separate `partition_graph.js` file and expose the agreed global function.
 - Task 2 must not add Partition Graph aggregation, data transformation, or visualisation logic.
 - Keep the container full-size and center its placeholder state with styles in `src/main.css`.
 
