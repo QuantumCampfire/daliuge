@@ -32,7 +32,7 @@ function renderPartitionGraph(data, container) {
         .setDefaultEdgeLabel(function () { return {}; });
 
     graphData.nodeDataArray.forEach(function (node) {
-        graph.setNode(node.key, {
+        graph.setNode(String(node.key), {
             labelType: "html",
             label: "<div class='partition-node-label'>" +
                 escapePartitionGraphText(node.name) +
@@ -50,7 +50,7 @@ function renderPartitionGraph(data, container) {
 
     graphData.linkDataArray.forEach(function (link) {
         var weight = Math.max(1, Number(link.weight) || 1);
-        graph.setEdge(link.from, link.to, {
+        graph.setEdge(String(link.from), String(link.to), {
             label: "weight: " + weight,
             class: "partition-edge",
             style: "stroke-width: " + partitionEdgeWidth(weight, maximumWeight) + "px",
@@ -68,7 +68,6 @@ function renderPartitionGraph(data, container) {
     });
     svgElement.call(zoom);
 
-    // Fit the complete graph to the available container while retaining zoom support.
     var bounds = inner.node().getBBox();
     var width = container.clientWidth || 1;
     var height = container.clientHeight || 1;
