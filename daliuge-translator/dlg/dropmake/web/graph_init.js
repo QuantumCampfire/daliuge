@@ -73,20 +73,165 @@ function graphInit(graphType) {
     })
 };
 
+// partition graph setup
+
 function partitionGraphInit(data) {
     $("#main").append("<div id='partitionGraphArea'></div>")
 
     var container = document.getElementById("partitionGraphArea");
-    if (typeof renderPartitionGraph === "function") {
+    if (typeof createPartitionGraphData === "function") {
         renderPartitionGraph(data, container);
     } else {
         container.innerHTML = [
             "<div class='partition-placeholder' role='status'>",
             "<strong>Partition Graph renderer not available</strong>",
-            "<span>The Partition view is ready. Its visualisation will appear here when the renderer is connected.</span>",
+            "<span>partition_data.js must be loaded before graph_init.js.</span>",
             "</div>"
         ].join("");
     }
+}
+
+function renderPartitionGraph(data, container) {
+    // Build the partition graph from the physical graph data
+    const partitionGraph = createPartitionGraphData(data);
+
+    // Handle empty graph
+    if (partitionGraph.nodeDataArray.length === 0) {
+        container.innerHTML = [
+            "<div class='partition-placeholder' role='status'>",
+            "<strong>No partitions found</strong>",
+            "<span>This physical graph does not contain any partition groups.</span>",
+            "</div>"
+        ].join("");
+        return;
+    }
+
+    // --- D3 / dagre-d3 setup ---------------------------------------------
+    const svg = d3.select(container)
+        .append("div")
+        .attr("id", "partitionGraphAreaInner")
+        .append("svg")
+        .attr("id", "partitionD3Graph");
+
+    const inner = svg.append("g").attr("id", "partitionRoot");
+
+    // Mouse-wheel zoom + pan
+    const zoom = d3.zoom().on("zoom", function () {
+        inner.attr("transform", d3.event.transform);
+    });
+    svg.call(zoom);
+
+    // --- Build dagre graph -----------------------------------------------
+    const g = new dagreD3.graphlib.Graph({ compound: false })
+        .setGraph({
+            nodesep: 80,
+            ranksep: 90,
+            rankdir: "LR",
+            marginx: 30,
+            marginy: 30
+        })
+        .setDefaultEdgeLabel(function () { return {}; });
+
+    // Compute max weight so we can scale edge widths proportionally
+    let maxWeight = 1;
+    partitionGraph.linkDataArray.forEach(function (link) {
+        if (link.weight > maxWeight) {
+            maxWeight = link.weight;
+        }
+    });
+
+    // Minimum / maximum stroke widths for edges
+    const MIN_STROKE = 1.5;
+    const MAX_STROKE = 14;
+
+    // --- Add partition nodes ---------------------------------------------
+    partitionGraph.nodeDataArray.forEach(function (node) {
+        const label = [
+            '<div class="partition-node-label">',
+            '  <span class="partition-node-name">' + node.name + '</span>',
+            '  <span class="partition-node-count">' + node.nodeCount + ' node' +
+                 (node.nodeCount === 1 ? '' : 's') + '</span>',
+            '</div>'
+        ].join("");
+
+        g.setNode(node.key, {
+            labelType: "html",
+            label: label,
+            class: "partition-node",
+            rx: 6,
+            ry: 6,
+            padding: 10
+        });
+    });
+
+    // --- Add partition edges ---------------------------------------------
+    partitionGraph.linkDataArray.forEach(function (link) {
+        // Scale stroke width linearly between MIN_STROKE and MAX_STROKE
+        const ratio = maxWeight > 1 ? (link.weight / maxWeight) : 1;
+        const strokeWidth = MIN_STROKE + ratio * (MAX_STROKE - MIN_STROKE);
+
+        // Simple colour ramp for the edge based on weight
+        const hue = 210 - Math.floor(ratio * 90); // blue -> red-ish
+        const strokeColor = "hsl(" + hue + ", 65%, 45%)";
+
+        g.setEdge(link.from, link.to, {
+            style: "stroke: " + strokeColor + "; stroke-width: " + strokeWidth + ";",
+            curve: d3.curveBasis,
+            arrowhead: "normal",
+            weight: link.weight,
+            label: String(link.weight),
+            labelStyle: "font-size: 11px; fill: #333;",
+            labelType: "html"
+        });
+    });
+
+    // --- Render ----------------------------------------------------------
+    const render = new dagreD3.render();
+    inner.call(render, g);
+
+    // --- Fit graph to container ------------------------------------------
+    fitPartitionGraph(svg, inner);
+
+    // --- Resize handler --------------------------------------------------
+    // Re-fit whenever the window is resized while this view is active.
+    const resizeHandler = function () {
+        // If the partition SVG has been removed (view switched), stop listening.
+        if (!document.getElementById("partitionD3Graph")) {
+            window.removeEventListener("resize", resizeHandler);
+            return;
+        }
+        fitPartitionGraph(svg, inner);
+    };
+    window.addEventListener("resize", resizeHandler);
+}
+
+/**
+ * Scale + centre the rendered partition graph inside its SVG.
+ */
+function fitPartitionGraph(svg, inner) {
+    const svgNode = svg.node();
+    const innerNode = inner.node();
+
+    if (!svgNode || !innerNode) {
+        return;
+    }
+
+    const bounds = innerNode.getBBox();
+    if (bounds.width === 0 || bounds.height === 0) {
+        return;
+    }
+
+    const fullWidth = svgNode.clientWidth;
+    const fullHeight = svgNode.clientHeight;
+
+    const widthScale = (fullWidth - 60) / bounds.width;
+    const heightScale = (fullHeight - 60) / bounds.height;
+    const scale = Math.min(widthScale, heightScale, 1);
+
+    const translateX = (fullWidth - bounds.width * scale) / 2 - bounds.x * scale;
+    const translateY = (fullHeight - bounds.height * scale) / 2 - bounds.y * scale;
+
+    inner.attr("transform", "translate(" + translateX + "," + translateY + ") scale(" + scale + ")");
 }
 
 // dag graph setup
