@@ -74,18 +74,17 @@ function graphInit(graphType) {
 };
 
 function partitionGraphInit(data) {
-    $("#main").append("<div id='partitionGraphArea'></div>")
+    $("#main").append("<div id='partitionGraphArea'></div>");
 
     var container = document.getElementById("partitionGraphArea");
+
+    console.log("Partition input:", data);
+    console.log("Partition nodes:", createPartitionGraphData(data));
+
     if (typeof renderPartitionGraph === "function") {
         renderPartitionGraph(data, container);
     } else {
-        container.innerHTML = [
-            "<div class='partition-placeholder' role='status'>",
-            "<strong>Partition Graph renderer not available</strong>",
-            "<span>The Partition view is ready. Its visualisation will appear here when the renderer is connected.</span>",
-            "</div>"
-        ].join("");
+        container.innerHTML = "Partition renderer was not loaded";
     }
 }
 
