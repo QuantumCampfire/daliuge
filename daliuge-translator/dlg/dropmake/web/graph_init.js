@@ -42,20 +42,27 @@ function graphInit(graphType) {
                 }
             }
 
-            //reset graph divs
-            $("#main").empty()
-            //initiate the correct function
-            if (graphType === "sankey") {
-                echartsGraphInit("sankey", data)
-            } else if (graphType === "dag") {
-                dagGraphInit(data)
-            } else if (graphType === "partition") {
-                partitionGraphInit(data)
-            }
-
-            //set correct graph button to active
+            // Reset button state FIRST, before any render call can throw.
             $(".graphChanger").removeClass("active")
             $("#" + graphType + "Button").addClass("active")
+
+            //reset graph divs
+            $("#main").empty()
+
+            //initiate the correct function. Wrap in try/catch so a renderer
+            //failure doesn't leave the UI in a half-updated state.
+            try {
+                if (graphType === "sankey") {
+                    echartsGraphInit("sankey", data)
+                } else if (graphType === "dag") {
+                    dagGraphInit(data)
+                } else if (graphType === "partition") {
+                    partitionGraphInit(data)
+                }
+            } catch (err) {
+                console.error("graph render failed:", err);
+                showMessageModal("Error", "Graph rendering failed: " + err.message);
+            }
 
             // DAG is unsuitable for very large graphs, but aggregate views remain useful.
             if (nodeCount > 600) {
@@ -73,20 +80,149 @@ function graphInit(graphType) {
     })
 };
 
+// partition graph setup
+
 function partitionGraphInit(data) {
     $("#main").append("<div id='partitionGraphArea'></div>")
 
     var container = document.getElementById("partitionGraphArea");
-    if (typeof renderPartitionGraph === "function") {
+    if (typeof createPartitionGraphData === "function") {
         renderPartitionGraph(data, container);
     } else {
         container.innerHTML = [
             "<div class='partition-placeholder' role='status'>",
             "<strong>Partition Graph renderer not available</strong>",
-            "<span>The Partition view is ready. Its visualisation will appear here when the renderer is connected.</span>",
+            "<span>partition_data.js must be loaded before graph_init.js.</span>",
             "</div>"
         ].join("");
     }
+}
+
+function renderPartitionGraph(data, container) {
+    const partitionGraph = createPartitionGraphData(data);
+
+    if (partitionGraph.nodeDataArray.length === 0) {
+        container.innerHTML = [
+            "<div class='partition-placeholder' role='status'>",
+            "<strong>No partitions found</strong>",
+            "<span>This physical graph does not contain any partition groups.</span>",
+            "</div>"
+        ].join("");
+        return;
+    }
+
+    // --- D3 / dagre-d3 setup (mirrors dagGraphInit) ----------------------
+    d3.select(container)
+        .append("div").attr("id", "partitionGraphAreaInner")
+        .append("svg").attr("id", "partitionD3Graph")
+        .append("g").attr("id", "partitionRoot");
+
+    var svg = d3.select("#partitionD3Graph");
+    var inner = svg.select("g");
+
+    // Mouse-wheel zoom
+    var zoom = d3.zoom().on("zoom", function () {
+        inner.attr("transform", d3.event.transform);
+    });
+    svg.call(zoom);
+
+    // Same graphlib config as dagGraphInit
+    var g = new dagreD3.graphlib.Graph({ compound: false })
+        .setGraph({
+            nodesep: 70,
+            ranksep: 50,
+            rankdir: "LR",
+            marginx: 20,
+            marginy: 20
+        })
+        .setDefaultEdgeLabel(function () { return {}; });
+
+    // --- Compute edge thickness scale -----------------------------------
+    let maxWeight = 1;
+    partitionGraph.linkDataArray.forEach(function (link) {
+        if (link.weight > maxWeight) {
+            maxWeight = link.weight;
+        }
+    });
+    const MIN_STROKE = 1.5;
+    const MAX_STROKE = 14;
+
+    // --- Add nodes -------------------------------------------------------
+    partitionGraph.nodeDataArray.forEach(function (node) {
+        const label =
+            '<div class="partition-node-label" id="partition_' + node.key + '">' +
+            '  <span class="partition-node-name">' + node.name + '</span>' +
+            '  <span class="partition-node-count">' + node.nodeCount + ' node' +
+                 (node.nodeCount === 1 ? '' : 's') + '</span>' +
+            '</div>';
+
+        g.setNode(node.key, {
+            labelType: "html",
+            label: label,
+            rx: 5,
+            ry: 5,
+            padding: 0,
+            class: "partition",
+            shape: "rect"
+        });
+    });
+
+    // --- Add edges -------------------------------------------------------
+    // No arrowheads: partition edges are undirected. The "none" arrowhead is
+    // registered in getRender() as a no-op.
+    partitionGraph.linkDataArray.forEach(function (link) {
+        const ratio = maxWeight > 1 ? (link.weight / maxWeight) : 1;
+        const strokeWidth = MIN_STROKE + ratio * (MAX_STROKE - MIN_STROKE);
+        const hue = 210 - Math.floor(ratio * 90);
+        const strokeColor = "hsl(" + hue + ", 65%, 45%)";
+
+        g.setEdge(link.from, link.to, {
+            style: "stroke: " + strokeColor + "; stroke-width: " + strokeWidth + ";",
+            curve: d3.curveBasis,
+            arrowhead: "none",
+            label: String(link.weight),
+            labelStyle: "font-size: 11px; fill: #333;",
+            labelType: "html"
+        });
+    });
+
+    // --- Render using the same renderer the DAG view uses ----------------
+    var render = getRender();
+    inner.call(render, g);
+
+    fitPartitionGraph(svg, inner);
+
+    // Resize handler — removes itself when the view changes
+    const resizeHandler = function () {
+        if (!document.getElementById("partitionD3Graph")) {
+            window.removeEventListener("resize", resizeHandler);
+            return;
+        }
+        fitPartitionGraph(svg, inner);
+    };
+    window.addEventListener("resize", resizeHandler);
+}
+
+function fitPartitionGraph(svg, inner) {
+    const svgNode = svg.node();
+    const innerNode = inner.node();
+    if (!svgNode || !innerNode) return;
+
+    const bounds = innerNode.getBBox();
+    if (bounds.width === 0 || bounds.height === 0) return;
+
+    const fullWidth = svgNode.clientWidth;
+    const fullHeight = svgNode.clientHeight;
+
+    const widthScale = (fullWidth - 60) / bounds.width;
+    const heightScale = (fullHeight - 60) / bounds.height;
+    const scale = Math.min(widthScale, heightScale, 1);
+
+    const translateX = (fullWidth - bounds.width * scale) / 2 - bounds.x * scale;
+    const translateY = (fullHeight - bounds.height * scale) / 2 - bounds.y * scale;
+
+    inner.attr("transform",
+        "translate(" + translateX + "," + translateY + ") scale(" + scale + ")");
 }
 
 // dag graph setup
@@ -130,6 +266,12 @@ function dagGraphInit(data) {
 function getRender() {
 
     var render = new dagreD3.render();
+
+    // Register a no-op arrowhead so we can pass arrowhead: "none"
+    // on edges that should be drawn as plain undirected lines.
+    render.arrows().none = function (parent, id, edge, type) {
+        // Intentionally empty — no marker is drawn.
+    };
 
     // Add our custom shape (parallelogram, similar to the PIP PDR document)
     render.shapes().parallelogram = function (parent, bbox, node) {
