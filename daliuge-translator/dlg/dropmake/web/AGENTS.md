@@ -2,14 +2,23 @@
 
 These instructions apply to the Translator web interface in this directory.
 
-## Current Task 2 implementation
+## Current Partition Graph implementation
 
 - `pg_viewer.html` exposes DAG, Sankey, and Partition view buttons.
 - `graph_init.js` routes Partition selection through `partitionGraphInit(data)`.
-- `partitionGraphInit(data)` creates the render container and shows a fallback message until Task 3 supplies the renderer.
-- `src/main.css` contains the full-size Partition container and centered fallback styles.
+- `partitionGraphInit(data)` creates the render container and delegates to the renderer.
+- `src/partition_data.js` aggregates physical graph nodes and cross-partition edges.
+- `src/partition_graph.js` owns Partition Graph rendering, zoom-to-fit, and
+  independent expand/collapse state.
+- Expanded partitions reserve a larger blank content area. Internal PG nodes
+  are intentionally not rendered yet.
+- Expanding or collapsing a partition redraws the complete Dagre layout so
+  neighbouring partitions move to make room.
+- `src/main.css` contains the Partition container, node, expansion-control,
+  expanded-area, focus, and fallback styles.
 - `../../../test/dropmake/test_tm.py` verifies that the rendered viewer page exposes the Partition entry point.
-- Task 2 is complete; actual Partition Graph data generation and drawing belong to Tasks 1 and 3.
+- `../../../test/dropmake/test_partition_graph.js` verifies renderer loading,
+  independent expansion state, label controls, and expanded dimensions.
 
 ## View switching
 
@@ -25,8 +34,12 @@ These instructions apply to the Translator web interface in this directory.
 - The Partition renderer contract is `renderPartitionGraph(data, container)`.
 - Guard calls to the renderer until it is available.
 - When the renderer is unavailable, show a short placeholder message inside the container instead of leaving a blank view or raising an error.
-- Task 3 must implement the renderer in a separate `partition_graph.js` file and expose the agreed global function.
-- Task 2 must not add Partition Graph aggregation, data transformation, or visualisation logic.
+- Keep the renderer in `src/partition_graph.js` and expose the agreed global function.
+- Keep aggregation and data transformation in `src/partition_data.js`.
+- Treat partition keys consistently as strings in interaction state because
+  Dagre normalises graph keys.
+- The complete partition node is clickable and keyboard-operable with Enter
+  or Space.
 - Keep the container full-size and center its placeholder state with styles in `src/main.css`.
 
 ## Validation
@@ -37,4 +50,8 @@ These instructions apply to the Translator web interface in this directory.
 - Verify selecting Partition shows the placeholder and does not raise an error before its renderer is implemented.
 - Verify an available renderer receives both the graph data and the Partition container.
 - Verify graphs above 600 nodes still expose Sankey and Partition while hiding DAG.
+- Verify each partition can be expanded and collapsed without changing the
+  expansion state of other partitions.
+- Verify expanded partitions remain empty and cause the whole graph to be
+  laid out again.
 - Run the JavaScript switching checks and the Translator page regression test in the Linux test container.
