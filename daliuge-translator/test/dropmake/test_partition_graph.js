@@ -25,7 +25,7 @@ function loadPartitionGraphModule() {
     return sandbox.module.exports;
 }
 
-test("partition expansion state toggles partitions independently", () => {
+test("partition expansion state keeps only the latest partition expanded", () => {
     const { createPartitionExpansionState } = loadPartitionGraphModule();
     const state = createPartitionExpansionState();
 
@@ -39,13 +39,13 @@ test("partition expansion state toggles partitions independently", () => {
 
     state.toggle("partition-2");
 
-    assert.equal(state.isExpanded("partition-1"), true);
-    assert.equal(state.isExpanded("partition-2"), true);
-
-    state.toggle("partition-1");
-
     assert.equal(state.isExpanded("partition-1"), false);
     assert.equal(state.isExpanded("partition-2"), true);
+
+    state.toggle("partition-2");
+
+    assert.equal(state.isExpanded("partition-1"), false);
+    assert.equal(state.isExpanded("partition-2"), false);
 });
 
 test("partition expansion state treats numeric and string keys as the same partition", () => {
@@ -55,6 +55,47 @@ test("partition expansion state treats numeric and string keys as the same parti
     state.toggle(1);
 
     assert.equal(state.isExpanded("1"), true);
+});
+
+test("expanded view contains only the selected partition and no links", () => {
+    const {
+        createPartitionExpansionState,
+        createVisiblePartitionGraph
+    } = loadPartitionGraphModule();
+    const partitionGraph = {
+        nodeDataArray: [
+            { key: 1, name: "Partition_1", nodeCount: 4 },
+            { key: 2, name: "Partition_2", nodeCount: 5 }
+        ],
+        linkDataArray: [
+            { from: 1, to: 2, weight: 3 }
+        ]
+    };
+    const state = createPartitionExpansionState();
+
+    assert.equal(
+        createVisiblePartitionGraph(partitionGraph, state).nodeDataArray.length,
+        2
+    );
+
+    state.toggle(2);
+    const focusedGraph = createVisiblePartitionGraph(partitionGraph, state);
+
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(focusedGraph.nodeDataArray)),
+        [{ key: 2, name: "Partition_2", nodeCount: 5 }]
+    );
+    assert.deepEqual(
+        JSON.parse(JSON.stringify(focusedGraph.linkDataArray)),
+        []
+    );
+
+    state.toggle(2);
+
+    assert.equal(
+        createVisiblePartitionGraph(partitionGraph, state).nodeDataArray.length,
+        2
+    );
 });
 
 test("partition labels expose expand and collapse controls without internal content", () => {

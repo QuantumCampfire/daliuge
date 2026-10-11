@@ -9,16 +9,16 @@ These instructions apply to the Translator web interface in this directory.
 - `partitionGraphInit(data)` creates the render container and delegates to the renderer.
 - `src/partition_data.js` aggregates physical graph nodes and cross-partition edges.
 - `src/partition_graph.js` owns Partition Graph rendering, zoom-to-fit, and
-  independent expand/collapse state.
-- Expanded partitions reserve a larger blank content area. Internal PG nodes
-  are intentionally not rendered yet.
-- Expanding or collapsing a partition redraws the complete Dagre layout so
-  neighbouring partitions move to make room.
+  exclusive expand/collapse state.
+- An expanded partition reserves a larger blank content area. Internal PG
+  nodes are intentionally not rendered yet.
+- While a partition is expanded, it is the only visible partition and all
+  partition links are hidden. Collapsing it restores the complete graph.
 - `src/main.css` contains the Partition container, node, expansion-control,
   expanded-area, focus, and fallback styles.
 - `../../../test/dropmake/test_tm.py` verifies that the rendered viewer page exposes the Partition entry point.
 - `../../../test/dropmake/test_partition_graph.js` verifies renderer loading,
-  independent expansion state, label controls, and expanded dimensions.
+  exclusive focus state, label controls, and expanded dimensions.
 
 ## View switching
 
@@ -50,8 +50,7 @@ These instructions apply to the Translator web interface in this directory.
 - Verify selecting Partition shows the placeholder and does not raise an error before its renderer is implemented.
 - Verify an available renderer receives both the graph data and the Partition container.
 - Verify graphs above 600 nodes still expose Sankey and Partition while hiding DAG.
-- Verify each partition can be expanded and collapsed without changing the
-  expansion state of other partitions.
-- Verify expanded partitions remain empty and cause the whole graph to be
-  laid out again.
+- Verify expanding a partition hides all other partitions and links.
+- Verify the expanded partition remains empty and centered.
+- Verify collapsing the focused partition restores the complete graph.
 - Run the JavaScript switching checks and the Translator page regression test in the Linux test container.

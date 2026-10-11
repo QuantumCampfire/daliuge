@@ -1,24 +1,42 @@
 function createPartitionExpansionState() {
-    const expandedPartitions = new Set();
+    let expandedPartition = null;
     const normaliseKey = function (partitionKey) {
         return String(partitionKey);
     };
 
     return {
         isExpanded: function (partitionKey) {
-            return expandedPartitions.has(normaliseKey(partitionKey));
+            return expandedPartition === normaliseKey(partitionKey);
+        },
+        getExpandedKey: function () {
+            return expandedPartition;
         },
         toggle: function (partitionKey) {
             const key = normaliseKey(partitionKey);
 
-            if (expandedPartitions.has(key)) {
-                expandedPartitions.delete(key);
+            if (expandedPartition === key) {
+                expandedPartition = null;
                 return false;
             }
 
-            expandedPartitions.add(key);
+            expandedPartition = key;
             return true;
         }
+    };
+}
+
+function createVisiblePartitionGraph(partitionGraph, expansionState) {
+    const expandedKey = expansionState.getExpandedKey();
+
+    if (expandedKey === null) {
+        return partitionGraph;
+    }
+
+    return {
+        nodeDataArray: partitionGraph.nodeDataArray.filter(function (node) {
+            return String(node.key) === expandedKey;
+        }),
+        linkDataArray: []
     };
 }
 
@@ -87,6 +105,10 @@ function renderPartitionGraph(data, container) {
         inner.attr("transform", null);
         inner.selectAll("*").remove();
 
+        const visibleGraph = createVisiblePartitionGraph(
+            partitionGraph,
+            expansionState
+        );
         const graph = new dagreD3.graphlib.Graph({ compound: false })
             .setGraph({
                 nodesep: 70,
@@ -98,11 +120,11 @@ function renderPartitionGraph(data, container) {
             .setDefaultEdgeLabel(function () { return {}; });
         let maxWeight = 1;
 
-        partitionGraph.linkDataArray.forEach(function (link) {
+        visibleGraph.linkDataArray.forEach(function (link) {
             maxWeight = Math.max(maxWeight, link.weight);
         });
 
-        partitionGraph.nodeDataArray.forEach(function (node) {
+        visibleGraph.nodeDataArray.forEach(function (node) {
             const expanded = expansionState.isExpanded(node.key);
 
             graph.setNode(node.key, {
@@ -118,7 +140,7 @@ function renderPartitionGraph(data, container) {
             });
         });
 
-        partitionGraph.linkDataArray.forEach(function (link) {
+        visibleGraph.linkDataArray.forEach(function (link) {
             const ratio = maxWeight > 1 ? (link.weight / maxWeight) : 1;
             const strokeWidth = 1.5 + ratio * 12.5;
             const hue = 210 - Math.floor(ratio * 90);
@@ -219,6 +241,7 @@ function fitPartitionGraph(svg, inner, zoom) {
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         createPartitionExpansionState: createPartitionExpansionState,
+        createVisiblePartitionGraph: createVisiblePartitionGraph,
         createPartitionNodeLabel: createPartitionNodeLabel,
         renderPartitionGraph: renderPartitionGraph
     };
