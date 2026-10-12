@@ -18,6 +18,11 @@ function loadPartitionGraphModule() {
 
     const source = fs.readFileSync(sourcePath, "utf8");
     const sandbox = {
+        document: {
+            documentElement: {
+                contains: function () { return true; }
+            }
+        },
         module: { exports: {} },
         exports: {}
     };
@@ -25,24 +30,24 @@ function loadPartitionGraphModule() {
     return sandbox.module.exports;
 }
 
-test("partition expansion state keeps only the latest partition expanded", () => {
+test("partition expansion state keeps only the latest overlay open", () => {
     const { createPartitionExpansionState } = loadPartitionGraphModule();
     const state = createPartitionExpansionState();
 
     assert.equal(state.isExpanded("partition-1"), false);
     assert.equal(state.isExpanded("partition-2"), false);
 
-    state.toggle("partition-1");
+    state.open("partition-1");
 
     assert.equal(state.isExpanded("partition-1"), true);
     assert.equal(state.isExpanded("partition-2"), false);
 
-    state.toggle("partition-2");
+    state.open("partition-2");
 
     assert.equal(state.isExpanded("partition-1"), false);
     assert.equal(state.isExpanded("partition-2"), true);
 
-    state.toggle("partition-2");
+    state.close();
 
     assert.equal(state.isExpanded("partition-1"), false);
     assert.equal(state.isExpanded("partition-2"), false);
@@ -52,53 +57,102 @@ test("partition expansion state treats numeric and string keys as the same parti
     const { createPartitionExpansionState } = loadPartitionGraphModule();
     const state = createPartitionExpansionState();
 
-    state.toggle(1);
+    state.open(1);
 
     assert.equal(state.isExpanded("1"), true);
 });
 
-test("expanded view contains only the selected partition and no links", () => {
-    const {
-        createPartitionExpansionState,
-        createVisiblePartitionGraph
-    } = loadPartitionGraphModule();
-    const partitionGraph = {
-        nodeDataArray: [
-            { key: 1, name: "Partition_1", nodeCount: 4 },
-            { key: 2, name: "Partition_2", nodeCount: 5 }
-        ],
-        linkDataArray: [
-            { from: 1, to: 2, weight: 3 }
-        ]
+test("partition expansion request preserves graph data and selected key", () => {
+    const { createPartitionExpansionRequest } = loadPartitionGraphModule();
+    const data = {
+        nodeDataArray: [{ key: 1 }, { key: 2 }],
+        linkDataArray: [{ from: 1, to: 2 }]
     };
-    const state = createPartitionExpansionState();
 
-    assert.equal(
-        createVisiblePartitionGraph(partitionGraph, state).nodeDataArray.length,
-        2
-    );
+    const request = createPartitionExpansionRequest(data, 2);
 
-    state.toggle(2);
-    const focusedGraph = createVisiblePartitionGraph(partitionGraph, state);
-
-    assert.deepEqual(
-        JSON.parse(JSON.stringify(focusedGraph.nodeDataArray)),
-        [{ key: 2, name: "Partition_2", nodeCount: 5 }]
-    );
-    assert.deepEqual(
-        JSON.parse(JSON.stringify(focusedGraph.linkDataArray)),
-        []
-    );
-
-    state.toggle(2);
-
-    assert.equal(
-        createVisiblePartitionGraph(partitionGraph, state).nodeDataArray.length,
-        2
-    );
+    assert.equal(request.data, data);
+    assert.equal(request.partitionKey, "2");
 });
 
-test("partition labels expose expand and collapse controls without internal content", () => {
+test("partition expansion overlay provides a separate Sankey placeholder", () => {
+    const { createPartitionExpansionOverlayMarkup } =
+        loadPartitionGraphModule();
+
+    const markup = createPartitionExpansionOverlayMarkup();
+
+    assert.match(markup, /id="partitionExpansionOverlay"/);
+    assert.match(markup, /role="dialog"/);
+    assert.match(markup, /hidden/);
+    assert.match(markup, /id="partitionExpansionContent"/);
+    assert.match(markup, /Expanded Sankey/);
+    assert.match(markup, /class="partition-expansion-close"/);
+});
+
+test("opening and closing the overlay exposes the Sprint 3 expansion request", () => {
+    const {
+        closePartitionExpansionOverlay,
+        createPartitionExpansionState,
+        openPartitionExpansionOverlay
+    } = loadPartitionGraphModule();
+    const data = {
+        nodeDataArray: [
+            { key: 2, name: "Partition_2", isGroup: true }
+        ],
+        linkDataArray: []
+    };
+    const state = createPartitionExpansionState();
+    const title = { textContent: "" };
+    let closeFocused = false;
+    let triggerFocused = false;
+    const closeButton = {
+        focus: function () { closeFocused = true; }
+    };
+    const overlay = {
+        dataset: {},
+        hidden: true,
+        partitionExpansionRequest: null,
+        querySelector: function (selector) {
+            return selector === "#partitionExpansionTitle"
+                ? title
+                : closeButton;
+        },
+        removeAttribute: function (attribute) {
+            if (attribute === "data-partition-key") {
+                delete this.dataset.partitionKey;
+            }
+        }
+    };
+    const trigger = {
+        focus: function () { triggerFocused = true; }
+    };
+
+    const request = openPartitionExpansionOverlay(
+        data,
+        2,
+        overlay,
+        state,
+        trigger
+    );
+
+    assert.equal(request.data, data);
+    assert.equal(request.partitionKey, "2");
+    assert.equal(overlay.partitionExpansionRequest, request);
+    assert.equal(overlay.dataset.partitionKey, "2");
+    assert.equal(overlay.hidden, false);
+    assert.equal(title.textContent, "Partition_2");
+    assert.equal(state.isExpanded(2), true);
+    assert.equal(closeFocused, true);
+
+    closePartitionExpansionOverlay(overlay, state);
+
+    assert.equal(overlay.hidden, true);
+    assert.equal(overlay.partitionExpansionRequest, null);
+    assert.equal(state.getExpandedKey(), null);
+    assert.equal(triggerFocused, true);
+});
+
+test("partition labels remain compact when their overlay is open", () => {
     const { createPartitionNodeLabel } = loadPartitionGraphModule();
     const node = {
         key: 1,
@@ -106,20 +160,15 @@ test("partition labels expose expand and collapse controls without internal cont
         nodeCount: 66
     };
 
-    const collapsed = createPartitionNodeLabel(node, false);
-    const expanded = createPartitionNodeLabel(node, true);
+    const label = createPartitionNodeLabel(node);
 
-    assert.match(collapsed, /partition-node-label/);
-    assert.doesNotMatch(collapsed, /is-expanded/);
-    assert.match(collapsed, /Partition_1/);
-    assert.match(collapsed, /66 nodes/);
-    assert.match(collapsed, /aria-label="Expand Partition_1"/);
-    assert.match(collapsed, />\+</);
-
-    assert.match(expanded, /partition-node-label is-expanded/);
-    assert.match(expanded, /aria-label="Collapse Partition_1"/);
-    assert.match(expanded, />&minus;</);
-    assert.doesNotMatch(expanded, /partition-node-content/);
+    assert.match(label, /partition-node-label/);
+    assert.doesNotMatch(label, /is-expanded/);
+    assert.match(label, /Partition_1/);
+    assert.match(label, /66 nodes/);
+    assert.match(label, /aria-label="Expand Partition_1"/);
+    assert.match(label, />\+</);
+    assert.doesNotMatch(label, /partition-node-content/);
 });
 
 test("viewer loads the Partition renderer before graph initialization", () => {
@@ -143,20 +192,29 @@ test("Partition renderer is provided by its dedicated module", () => {
     assert.equal(typeof renderPartitionGraph, "function");
 });
 
-test("Partition redraw clears the previous zoom transform before Dagre measures labels", () => {
+test("partition clicks open the overlay without filtering or redrawing Dagre", () => {
     const rendererPath = path.resolve(
         __dirname,
         "../../dlg/dropmake/web/src/partition_graph.js"
     );
     const renderer = fs.readFileSync(rendererPath, "utf8");
-    const clearTransform = renderer.indexOf('inner.attr("transform", null);');
-    const renderGraph = renderer.indexOf("inner.call(getRender(), graph);");
 
-    assert.ok(clearTransform >= 0);
-    assert.ok(clearTransform < renderGraph);
+    assert.doesNotMatch(renderer, /function createVisiblePartitionGraph/);
+    assert.match(
+        renderer,
+        /openPartitionExpansionOverlay\(\s*data,\s*partitionKey/
+    );
+    assert.doesNotMatch(
+        renderer,
+        /expansionState\.toggle\(partitionKey\);\s*drawPartitionGraph\(\);/
+    );
+    assert.equal(
+        (renderer.match(/drawPartitionGraph\(\);/g) || []).length,
+        1
+    );
 });
 
-test("expanded Partition styling reserves a larger blank content area", () => {
+test("expanded Partition styling uses a separate focus overlay", () => {
     const stylesheetPath = path.resolve(
         __dirname,
         "../../dlg/dropmake/web/src/main.css"
@@ -165,12 +223,12 @@ test("expanded Partition styling reserves a larger blank content area", () => {
 
     assert.match(
         stylesheet,
-        /\.partition-node-label\.is-expanded\s*\{[^}]*width:\s*360px;[^}]*height:\s*240px;/s
+        /#partitionExpansionOverlay\s*\{[^}]*position:\s*absolute;/s
     );
-    assert.match(
-        stylesheet,
-        /\.node\.partition-expanded rect\s*\{[^}]*height:\s*240px;/s
-    );
+    assert.match(stylesheet, /\.partition-expansion-panel\s*\{/);
+    assert.match(stylesheet, /#partitionExpansionContent\s*\{/);
+    assert.doesNotMatch(stylesheet, /\.partition-node-label\.is-expanded/);
+    assert.doesNotMatch(stylesheet, /\.node\.partition-expanded/);
     assert.match(
         stylesheet,
         /#partitionGraphArea \.node \.partition-node-label\s*\{[^}]*padding:\s*10px 34px;/s

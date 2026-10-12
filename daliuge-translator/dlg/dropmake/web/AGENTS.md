@@ -10,12 +10,17 @@ These instructions apply to the Translator web interface in this directory.
 - `src/partition_data.js` aggregates physical graph nodes and cross-partition edges.
 - `src/partition_graph.js` owns Partition Graph rendering, zoom-to-fit, and
   exclusive expand/collapse state.
-- An expanded partition reserves a larger blank content area. Internal PG
-  nodes are intentionally not rendered yet.
-- While a partition is expanded, it is the only visible partition and all
-  partition links are hidden. Collapsing it restores the complete graph.
+- The Dagre Partition Graph stays mounted and unchanged when a partition is
+  selected. Do not filter its nodes or rerun its layout for expansion.
+- `#partitionExpansionOverlay` is a separate HTML focus layer above the graph.
+  Its content is currently an Expanded Sankey placeholder.
+- `createPartitionExpansionRequest(data, partitionKey)` preserves the original
+  graph data and normalises the selected key. Sprint 3 can pass that request
+  into `createExpandedPartitionData` and the Expanded Sankey renderer.
+- Closing the overlay returns to the unchanged graph and preserves its current
+  zoom/pan transform.
 - `src/main.css` contains the Partition container, node, expansion-control,
-  expanded-area, focus, and fallback styles.
+  overlay, focus, and fallback styles.
 - `../../../test/dropmake/test_tm.py` verifies that the rendered viewer page exposes the Partition entry point.
 - `../../../test/dropmake/test_partition_graph.js` verifies renderer loading,
   exclusive focus state, label controls, and expanded dimensions.
@@ -40,6 +45,8 @@ These instructions apply to the Translator web interface in this directory.
   Dagre normalises graph keys.
 - The complete partition node is clickable and keyboard-operable with Enter
   or Space.
+- Keep the expansion overlay separate from the Dagre SVG so Sankey can render
+  into a normal HTML container.
 - Keep the container full-size and center its placeholder state with styles in `src/main.css`.
 
 ## Validation
@@ -50,7 +57,10 @@ These instructions apply to the Translator web interface in this directory.
 - Verify selecting Partition shows the placeholder and does not raise an error before its renderer is implemented.
 - Verify an available renderer receives both the graph data and the Partition container.
 - Verify graphs above 600 nodes still expose Sankey and Partition while hiding DAG.
-- Verify expanding a partition hides all other partitions and links.
-- Verify the expanded partition remains empty and centered.
-- Verify collapsing the focused partition restores the complete graph.
+- Verify opening and closing the overlay leaves all Partition nodes and links
+  mounted.
+- Verify the SVG zoom/pan transform is identical before opening and after
+  closing the overlay.
+- Verify the selected partition key and original graph data are available to
+  the overlay content renderer.
 - Run the JavaScript switching checks and the Translator page regression test in the Linux test container.

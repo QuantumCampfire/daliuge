@@ -11,6 +11,13 @@ function createPartitionExpansionState() {
         getExpandedKey: function () {
             return expandedPartition;
         },
+        open: function (partitionKey) {
+            expandedPartition = normaliseKey(partitionKey);
+            return expandedPartition;
+        },
+        close: function () {
+            expandedPartition = null;
+        },
         toggle: function (partitionKey) {
             const key = normaliseKey(partitionKey);
 
@@ -25,19 +32,85 @@ function createPartitionExpansionState() {
     };
 }
 
-function createVisiblePartitionGraph(partitionGraph, expansionState) {
-    const expandedKey = expansionState.getExpandedKey();
+function createPartitionExpansionRequest(data, partitionKey) {
+    return {
+        data: data,
+        partitionKey: String(partitionKey)
+    };
+}
 
-    if (expandedKey === null) {
-        return partitionGraph;
+function createPartitionExpansionOverlayMarkup() {
+    return [
+        '<section id="partitionExpansionOverlay" role="dialog" ',
+        'aria-modal="true" aria-labelledby="partitionExpansionTitle" hidden>',
+        '  <div class="partition-expansion-panel">',
+        '    <header class="partition-expansion-header">',
+        '      <h2 id="partitionExpansionTitle">Partition expansion</h2>',
+        '      <button type="button" class="partition-expansion-close" ',
+        'aria-label="Close partition expansion">&times;</button>',
+        "    </header>",
+        '    <div id="partitionExpansionContent">',
+        '      <div class="partition-expansion-placeholder" role="status">',
+        "        <strong>Expanded Sankey placeholder</strong>",
+        "        <span>The selected partition will render here.</span>",
+        "      </div>",
+        "    </div>",
+        "  </div>",
+        "</section>"
+    ].join("");
+}
+
+function getPartitionExpansionName(data, partitionKey) {
+    const group = data.nodeDataArray.find(function (node) {
+        return (
+            node.isGroup === true &&
+            String(node.key) === String(partitionKey)
+        );
+    });
+
+    return group ? group.name : "Partition_" + partitionKey;
+}
+
+function openPartitionExpansionOverlay(
+    data,
+    partitionKey,
+    overlay,
+    expansionState,
+    triggerElement
+) {
+    const request = createPartitionExpansionRequest(data, partitionKey);
+    const title = overlay.querySelector("#partitionExpansionTitle");
+
+    expansionState.open(request.partitionKey);
+    overlay.partitionExpansionRequest = request;
+    overlay.dataset.partitionKey = request.partitionKey;
+    overlay.hidden = false;
+    overlay.triggerElement = triggerElement || null;
+    title.textContent = getPartitionExpansionName(
+        request.data,
+        request.partitionKey
+    );
+
+    const closeButton = overlay.querySelector(".partition-expansion-close");
+    if (closeButton) {
+        closeButton.focus();
     }
 
-    return {
-        nodeDataArray: partitionGraph.nodeDataArray.filter(function (node) {
-            return String(node.key) === expandedKey;
-        }),
-        linkDataArray: []
-    };
+    return request;
+}
+
+function closePartitionExpansionOverlay(overlay, expansionState) {
+    const triggerElement = overlay.triggerElement;
+
+    expansionState.close();
+    overlay.hidden = true;
+    overlay.removeAttribute("data-partition-key");
+    overlay.partitionExpansionRequest = null;
+    overlay.triggerElement = null;
+
+    if (triggerElement && document.documentElement.contains(triggerElement)) {
+        triggerElement.focus();
+    }
 }
 
 function escapePartitionLabel(value) {
@@ -52,25 +125,54 @@ function escapePartitionLabel(value) {
     });
 }
 
-function createPartitionNodeLabel(node, expanded) {
+function createPartitionNodeLabel(node) {
     const name = escapePartitionLabel(node.name);
     const nodeCount = Number(node.nodeCount);
-    const labelClass = expanded
-        ? "partition-node-label is-expanded"
-        : "partition-node-label";
-    const action = expanded ? "Collapse" : "Expand";
-    const icon = expanded ? "&minus;" : "+";
 
     return [
-        '<div class="' + labelClass + '" id="partition_' +
+        '<div class="partition-node-label" id="partition_' +
             escapePartitionLabel(node.key) + '">',
         '  <span class="partition-node-name">' + name + "</span>",
         '  <span class="partition-node-count">' + nodeCount + " node" +
             (nodeCount === 1 ? "" : "s") + "</span>",
-        '  <span class="partition-node-toggle" aria-label="' + action +
-            " " + name + '">' + icon + "</span>",
+        '  <span class="partition-node-toggle" aria-label="Expand ' +
+            name + '">+</span>',
         "</div>"
     ].join("");
+}
+
+function updatePartitionNodeSelection(inner, partitionGraph, expansionState) {
+    inner.selectAll("g.node")
+        .classed("partition-selected", function (partitionKey) {
+            return expansionState.isExpanded(partitionKey);
+        })
+        .attr("aria-expanded", function (partitionKey) {
+            return String(expansionState.isExpanded(partitionKey));
+        })
+        .attr("aria-label", function (partitionKey) {
+            const node = partitionGraph.nodeDataArray.find(function (item) {
+                return String(item.key) === String(partitionKey);
+            });
+            const action = expansionState.isExpanded(partitionKey)
+                ? "Expansion open for "
+                : "Expand ";
+            return action + (node ? node.name : "partition");
+        })
+        .each(function (partitionKey) {
+            const selected = expansionState.isExpanded(partitionKey);
+            const node = partitionGraph.nodeDataArray.find(function (item) {
+                return String(item.key) === String(partitionKey);
+            });
+            const name = node ? node.name : "partition";
+
+            d3.select(this)
+                .select(".partition-node-toggle")
+                .text(selected ? "\u2212" : "+")
+                .attr(
+                    "aria-label",
+                    (selected ? "Expansion open for " : "Expand ") + name
+                );
+        });
 }
 
 function renderPartitionGraph(data, container) {
@@ -92,6 +194,11 @@ function renderPartitionGraph(data, container) {
         .append("div").attr("id", "partitionGraphAreaInner")
         .append("svg").attr("id", "partitionD3Graph")
         .append("g").attr("id", "partitionRoot");
+    container.insertAdjacentHTML(
+        "beforeend",
+        createPartitionExpansionOverlayMarkup()
+    );
+    const overlay = container.querySelector("#partitionExpansionOverlay");
     const svg = d3.select("#partitionD3Graph");
     const zoom = d3.zoom().on("zoom", function () {
         inner.attr("transform", d3.event.transform);
@@ -99,16 +206,30 @@ function renderPartitionGraph(data, container) {
 
     svg.call(zoom);
 
-    function drawPartitionGraph() {
-        // Dagre measures HTML labels in screen coordinates. Clear the previous
-        // zoom transform so repeated redraws do not progressively skew labels.
-        inner.attr("transform", null);
-        inner.selectAll("*").remove();
-
-        const visibleGraph = createVisiblePartitionGraph(
+    const closeOverlay = function () {
+        closePartitionExpansionOverlay(overlay, expansionState);
+        updatePartitionNodeSelection(
+            inner,
             partitionGraph,
             expansionState
         );
+    };
+
+    overlay.querySelector(".partition-expansion-close")
+        .addEventListener("click", closeOverlay);
+    overlay.addEventListener("click", function (event) {
+        if (event.target === overlay) {
+            closeOverlay();
+        }
+    });
+    overlay.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            closeOverlay();
+        }
+    });
+
+    function drawPartitionGraph() {
         const graph = new dagreD3.graphlib.Graph({ compound: false })
             .setGraph({
                 nodesep: 70,
@@ -120,27 +241,23 @@ function renderPartitionGraph(data, container) {
             .setDefaultEdgeLabel(function () { return {}; });
         let maxWeight = 1;
 
-        visibleGraph.linkDataArray.forEach(function (link) {
+        partitionGraph.linkDataArray.forEach(function (link) {
             maxWeight = Math.max(maxWeight, link.weight);
         });
 
-        visibleGraph.nodeDataArray.forEach(function (node) {
-            const expanded = expansionState.isExpanded(node.key);
-
+        partitionGraph.nodeDataArray.forEach(function (node) {
             graph.setNode(node.key, {
                 labelType: "html",
-                label: createPartitionNodeLabel(node, expanded),
+                label: createPartitionNodeLabel(node),
                 rx: 5,
                 ry: 5,
                 padding: 0,
-                class: expanded
-                    ? "partition partition-expanded"
-                    : "partition partition-collapsed",
+                class: "partition",
                 shape: "rect"
             });
         });
 
-        visibleGraph.linkDataArray.forEach(function (link) {
+        partitionGraph.linkDataArray.forEach(function (link) {
             const ratio = maxWeight > 1 ? (link.weight / maxWeight) : 1;
             const strokeWidth = 1.5 + ratio * 12.5;
             const hue = 210 - Math.floor(ratio * 90);
@@ -162,22 +279,20 @@ function renderPartitionGraph(data, container) {
         inner.selectAll("g.node")
             .attr("role", "button")
             .attr("tabindex", 0)
-            .attr("aria-expanded", function (partitionKey) {
-                return String(expansionState.isExpanded(partitionKey));
-            })
-            .attr("aria-label", function (partitionKey) {
-                const node = partitionGraph.nodeDataArray.find(function (item) {
-                    return String(item.key) === String(partitionKey);
-                });
-                const action = expansionState.isExpanded(partitionKey)
-                    ? "Collapse "
-                    : "Expand ";
-                return action + (node ? node.name : "partition");
-            })
             .on("click", function (partitionKey) {
                 d3.event.stopPropagation();
-                expansionState.toggle(partitionKey);
-                drawPartitionGraph();
+                openPartitionExpansionOverlay(
+                    data,
+                    partitionKey,
+                    overlay,
+                    expansionState,
+                    this
+                );
+                updatePartitionNodeSelection(
+                    inner,
+                    partitionGraph,
+                    expansionState
+                );
             })
             .on("keydown", function (partitionKey) {
                 if (d3.event.key !== "Enter" && d3.event.key !== " ") {
@@ -186,10 +301,21 @@ function renderPartitionGraph(data, container) {
 
                 d3.event.preventDefault();
                 d3.event.stopPropagation();
-                expansionState.toggle(partitionKey);
-                drawPartitionGraph();
+                openPartitionExpansionOverlay(
+                    data,
+                    partitionKey,
+                    overlay,
+                    expansionState,
+                    this
+                );
+                updatePartitionNodeSelection(
+                    inner,
+                    partitionGraph,
+                    expansionState
+                );
             });
 
+        updatePartitionNodeSelection(inner, partitionGraph, expansionState);
         fitPartitionGraph(svg, inner, zoom);
     }
 
@@ -241,7 +367,11 @@ function fitPartitionGraph(svg, inner, zoom) {
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         createPartitionExpansionState: createPartitionExpansionState,
-        createVisiblePartitionGraph: createVisiblePartitionGraph,
+        createPartitionExpansionRequest: createPartitionExpansionRequest,
+        createPartitionExpansionOverlayMarkup:
+            createPartitionExpansionOverlayMarkup,
+        openPartitionExpansionOverlay: openPartitionExpansionOverlay,
+        closePartitionExpansionOverlay: closePartitionExpansionOverlay,
         createPartitionNodeLabel: createPartitionNodeLabel,
         renderPartitionGraph: renderPartitionGraph
     };
