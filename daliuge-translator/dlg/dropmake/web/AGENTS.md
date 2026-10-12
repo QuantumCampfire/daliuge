@@ -2,14 +2,28 @@
 
 These instructions apply to the Translator web interface in this directory.
 
-## Current Task 2 implementation
+## Current Partition Graph implementation
 
 - `pg_viewer.html` exposes DAG, Sankey, and Partition view buttons.
 - `graph_init.js` routes Partition selection through `partitionGraphInit(data)`.
-- `partitionGraphInit(data)` creates the render container and shows a fallback message until Task 3 supplies the renderer.
-- `src/main.css` contains the full-size Partition container and centered fallback styles.
+- `partitionGraphInit(data)` creates the render container and delegates to the renderer.
+- `src/partition_data.js` aggregates physical graph nodes and cross-partition edges.
+- `src/partition_graph.js` owns Partition Graph rendering, zoom-to-fit, and
+  exclusive expand/collapse state.
+- The Dagre Partition Graph stays mounted and unchanged when a partition is
+  selected. Do not filter its nodes or rerun its layout for expansion.
+- `#partitionExpansionOverlay` is a separate HTML focus layer above the graph.
+  Its content is currently an Expanded Sankey placeholder.
+- `createPartitionExpansionRequest(data, partitionKey)` preserves the original
+  graph data and normalises the selected key. Sprint 3 can pass that request
+  into `createExpandedPartitionData` and the Expanded Sankey renderer.
+- Closing the overlay returns to the unchanged graph and preserves its current
+  zoom/pan transform.
+- `src/main.css` contains the Partition container, node, expansion-control,
+  overlay, focus, and fallback styles.
 - `../../../test/dropmake/test_tm.py` verifies that the rendered viewer page exposes the Partition entry point.
-- Task 2 is complete; actual Partition Graph data generation and drawing belong to Tasks 1 and 3.
+- `../../../test/dropmake/test_partition_graph.js` verifies renderer loading,
+  exclusive focus state, label controls, and expanded dimensions.
 
 ## View switching
 
@@ -25,8 +39,14 @@ These instructions apply to the Translator web interface in this directory.
 - The Partition renderer contract is `renderPartitionGraph(data, container)`.
 - Guard calls to the renderer until it is available.
 - When the renderer is unavailable, show a short placeholder message inside the container instead of leaving a blank view or raising an error.
-- Task 3 must implement the renderer in a separate `partition_graph.js` file and expose the agreed global function.
-- Task 2 must not add Partition Graph aggregation, data transformation, or visualisation logic.
+- Keep the renderer in `src/partition_graph.js` and expose the agreed global function.
+- Keep aggregation and data transformation in `src/partition_data.js`.
+- Treat partition keys consistently as strings in interaction state because
+  Dagre normalises graph keys.
+- The complete partition node is clickable and keyboard-operable with Enter
+  or Space.
+- Keep the expansion overlay separate from the Dagre SVG so Sankey can render
+  into a normal HTML container.
 - Keep the container full-size and center its placeholder state with styles in `src/main.css`.
 
 ## Validation
@@ -37,4 +57,10 @@ These instructions apply to the Translator web interface in this directory.
 - Verify selecting Partition shows the placeholder and does not raise an error before its renderer is implemented.
 - Verify an available renderer receives both the graph data and the Partition container.
 - Verify graphs above 600 nodes still expose Sankey and Partition while hiding DAG.
+- Verify opening and closing the overlay leaves all Partition nodes and links
+  mounted.
+- Verify the SVG zoom/pan transform is identical before opening and after
+  closing the overlay.
+- Verify the selected partition key and original graph data are available to
+  the overlay content renderer.
 - Run the JavaScript switching checks and the Translator page regression test in the Linux test container.

@@ -413,7 +413,7 @@
   font-weight: 700;
 }
 
-.node g div {
+#main #dagGraphArea .node g div {
   color: #000;
   padding: 4px 28px 4px 28px;
   overflow: hidden;
@@ -578,12 +578,18 @@
 
 /* Labels */
 #partitionGraphArea .node .partition-node-label {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   font-family: sans-serif;
   line-height: 1.25;
-  padding: 4px 10px;
+  min-width: 150px;
+  min-height: 58px;
+  overflow: hidden;
+  padding: 10px 34px;
+  position: relative;
 }
 
 #partitionGraphArea .node .partition-node-name {
@@ -596,6 +602,127 @@
 #partitionGraphArea .node .partition-node-count {
   font-size: 11px;
   color: #5a6b80;
+}
+
+#partitionGraphArea .node .partition-node-toggle {
+  align-items: center;
+  background: #2f6faf;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  font-size: 14px;
+  font-weight: 700;
+  height: 18px;
+  justify-content: center;
+  line-height: 18px;
+  pointer-events: none;
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  width: 18px;
+}
+
+#partitionGraphArea .node:focus {
+  outline: none;
+}
+
+#partitionGraphArea .node:focus rect {
+  stroke: #154f87;
+  stroke-width: 3px;
+}
+
+#partitionGraphArea .node.partition-selected rect {
+  fill: #dceafa;
+  stroke: #154f87;
+  stroke-width: 3px;
+}
+
+#partitionExpansionOverlay {
+  align-items: center;
+  background: rgba(238, 244, 251, 0.78);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 32px;
+  position: absolute;
+  z-index: 20;
+}
+
+#partitionExpansionOverlay[hidden] {
+  display: none;
+}
+
+.partition-expansion-panel {
+  background: #fff;
+  border: 2px solid #4a6fa5;
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 35, 73, 0.24);
+  display: flex;
+  flex-direction: column;
+  height: min(640px, 100%);
+  min-height: 320px;
+  overflow: hidden;
+  width: min(960px, 100%);
+}
+
+.partition-expansion-header {
+  align-items: center;
+  background: #eef4fb;
+  border-bottom: 1px solid #b8c9dc;
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.partition-expansion-header h2 {
+  color: #1f3a5f;
+  font-family: sans-serif;
+  font-size: 18px;
+  margin: 0;
+}
+
+.partition-expansion-close {
+  align-items: center;
+  background: #2f6faf;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  font-size: 20px;
+  height: 30px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 30px;
+}
+
+.partition-expansion-close:focus {
+  box-shadow: 0 0 0 3px rgba(47, 111, 175, 0.3);
+  outline: none;
+}
+
+#partitionExpansionContent {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.partition-expansion-placeholder {
+  align-items: center;
+  color: #516579;
+  display: flex;
+  flex-direction: column;
+  font-family: sans-serif;
+  height: 100%;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.partition-expansion-placeholder strong {
+  color: #263d58;
+  margin-bottom: 8px;
 }
 
 /* Edge styling — the inline `style` attribute on each <path> overrides these
