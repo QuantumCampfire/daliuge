@@ -86,12 +86,25 @@ function openPartitionExpansionOverlay(
     overlay.dataset.partitionKey = request.partitionKey;
     overlay.hidden = false;
     overlay.triggerElement = triggerElement || null;
+
     title.textContent = getPartitionExpansionName(
         request.data,
         request.partitionKey
     );
 
-    const closeButton = overlay.querySelector(".partition-expansion-close");
+    // Render the selected partition inside the overlay.
+    if (typeof renderPartitionExpansion === "function") {
+        renderPartitionExpansion(
+            request.data,
+            request.partitionKey,
+            overlay
+        );
+    }
+
+    const closeButton = overlay.querySelector(
+        ".partition-expansion-close"
+    );
+
     if (closeButton) {
         closeButton.focus();
     }
@@ -102,13 +115,21 @@ function openPartitionExpansionOverlay(
 function closePartitionExpansionOverlay(overlay, expansionState) {
     const triggerElement = overlay.triggerElement;
 
+    // Dispose the ECharts Sankey before closing the overlay.
+    if (typeof disposeExpandedPartitionSankey === "function") {
+        disposeExpandedPartitionSankey(overlay);
+    }
+
     expansionState.close();
     overlay.hidden = true;
     overlay.removeAttribute("data-partition-key");
     overlay.partitionExpansionRequest = null;
     overlay.triggerElement = null;
 
-    if (triggerElement && document.documentElement.contains(triggerElement)) {
+    if (
+        triggerElement &&
+        document.documentElement.contains(triggerElement)
+    ) {
         triggerElement.focus();
     }
 }
